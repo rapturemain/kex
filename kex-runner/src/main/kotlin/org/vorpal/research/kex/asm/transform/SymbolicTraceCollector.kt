@@ -1,11 +1,13 @@
 package org.vorpal.research.kex.asm.transform
 
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.trace.symbolic.InstructionTraceCollector
 import org.vorpal.research.kex.trace.symbolic.TraceCollectorProxy
 import org.vorpal.research.kex.util.insertAfter
 import org.vorpal.research.kex.util.insertBefore
 import org.vorpal.research.kex.util.wrapValue
+import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.Package
 import org.vorpal.research.kfg.ir.Class
 import org.vorpal.research.kfg.ir.Method
@@ -15,15 +17,19 @@ import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.type.Type
 import org.vorpal.research.kfg.type.TypeFactory
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.addRequiredProvider
+import org.vorpal.research.kfg.visitor.getProvider
 import org.vorpal.research.kthelper.collection.MutableBuilder
 import org.vorpal.research.kthelper.collection.buildList
 
 class SymbolicTraceCollector(
-    val executionContext: ExecutionContext,
+    override val cm: ClassManager,
+    override val pipeline: Pipeline,
     val ignores: Set<Package> = setOf()
 ) : MethodVisitor, InstructionBuilder {
+    val executionContext get() = getProvider<ExecutionContextProvider, ExecutionContext>().provide()
     override val ctx: UsageContext = EmptyUsageContext
-    override val cm get() = executionContext.cm
 
     override val instructions: InstructionFactory
         get() = cm.instruction
@@ -36,6 +42,10 @@ class SymbolicTraceCollector(
     private lateinit var traceCollector: Instruction
 
     override fun cleanup() {}
+
+    override fun registerPassDependencies() {
+        addRequiredProvider<ExecutionContextProvider>()
+    }
 
     private fun prepareStaticInitializer(method: Method) {
         val entryInstructions = buildList<Instruction> {

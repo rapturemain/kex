@@ -9,12 +9,16 @@ import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.EmptyUsageContext
 import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kthelper.collection.buildList
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 
-class TraceInstrumenter(override val cm: ClassManager) : MethodVisitor {
+class TraceInstrumenter(
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
+) : MethodVisitor {
     private val insertedInsts = mutableListOf<Instruction>()
     private lateinit var fos: FileOutputStreamWrapper
 

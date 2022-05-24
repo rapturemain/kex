@@ -19,6 +19,7 @@ import org.vorpal.research.kex.reanimator.codegen.JUnitTestCasePrinter
 import org.vorpal.research.kex.reanimator.codegen.TestCasePrinter
 import org.vorpal.research.kex.reanimator.codegen.klassName
 import org.vorpal.research.kex.reanimator.codegen.packageName
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
 import org.vorpal.research.kex.reanimator.descriptor.DescriptorStatistics
 import org.vorpal.research.kex.smt.SMTModel
 import org.vorpal.research.kex.state.PredicateState
@@ -55,17 +56,24 @@ val Parameters<ActionSequence>.rtUnmapped: Parameters<ActionSequence>
 class Reanimator(
     override val ctx: ExecutionContext,
     val psa: PredicateStateAnalysis,
+    val setters: SetterAnalysisResult,
     packageName: String,
     klassName: String
 ) : ParameterGenerator {
     val cm: ClassManager get() = ctx.cm
     val printer: TestCasePrinter = JUnitTestCasePrinter(ctx, packageName, klassName)
-    private val csGenerator = ActionSequenceGenerator(ctx, psa, visibilityLevel)
+    private val csGenerator = ActionSequenceGenerator(ctx, psa, setters, visibilityLevel)
     private val csExecutor = ActionSequenceExecutor(ctx)
 
-    constructor(ctx: ExecutionContext, psa: PredicateStateAnalysis, method: Method) : this(
+    constructor(
+        ctx: ExecutionContext,
+        psa: PredicateStateAnalysis,
+        setters: SetterAnalysisResult,
+        method: Method
+    ) : this(
         ctx,
         psa,
+        setters,
         method.packageName,
         method.klassName
     )

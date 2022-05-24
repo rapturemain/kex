@@ -4,6 +4,7 @@ import org.vorpal.research.kex.KexTest
 import org.vorpal.research.kfg.analysis.LoopSimplifier
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.visitor.LoopAnalysis
+import org.vorpal.research.kfg.visitor.pipelineStub
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -14,15 +15,15 @@ class LoopDerollerTest : KexTest() {
 
         if (!method.hasLoops) return
 
-        LoopSimplifier(cm).visit(method)
-        var loops = LoopAnalysis(cm).invoke(method)
+        LoopSimplifier(cm, pipelineStub()).visit(method)
+        var loops = LoopAnalysis(cm, pipelineStub()).analyse(method).loops
         for (loop in loops) {
             if (!loop.hasSinglePreheader) return
             if (!loop.hasSingleLatch) return
         }
 
-        LoopDeroller(cm).visit(method)
-        loops = LoopAnalysis(cm).invoke(method)
+        LoopDeroller(cm, pipelineStub()).visit(method)
+        loops = LoopAnalysis(cm, pipelineStub()).analyse(method).loops
         assertTrue(loops.isEmpty())
     }
 

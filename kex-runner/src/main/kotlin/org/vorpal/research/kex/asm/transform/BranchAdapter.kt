@@ -1,5 +1,6 @@
 package org.vorpal.research.kex.asm.transform
 
+import org.vorpal.research.kex.asm.manager.MethodWrapperInitializer
 import org.vorpal.research.kex.asm.manager.wrapper
 import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.ir.BasicBlock
@@ -10,6 +11,8 @@ import org.vorpal.research.kfg.ir.value.instruction.BranchInst
 import org.vorpal.research.kfg.ir.value.instruction.PhiInst
 import org.vorpal.research.kfg.ir.value.usageContext
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.addRequiredPass
 import org.vorpal.research.kthelper.KtException
 import org.vorpal.research.kthelper.graph.DominatorTree
 import org.vorpal.research.kthelper.graph.DominatorTreeBuilder
@@ -17,9 +20,15 @@ import org.vorpal.research.kthelper.logging.log
 
 class BranchAdapter(
     override val cm: ClassManager,
+    override val pipeline: Pipeline,
 ) : MethodVisitor {
     private lateinit var domTree: DominatorTree<BasicBlock>
     private lateinit var ctx: UsageContext
+
+    override fun registerPassDependencies() {
+        addRequiredPass<LoopDeroller>()
+        addRequiredPass<MethodWrapperInitializer>()
+    }
 
     override fun cleanup() {}
 

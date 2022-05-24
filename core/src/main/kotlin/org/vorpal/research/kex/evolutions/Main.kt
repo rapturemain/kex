@@ -10,10 +10,11 @@ import org.vorpal.research.kfg.ir.value.instruction.Instruction
 import org.vorpal.research.kfg.util.Flags
 import org.vorpal.research.kfg.visitor.LoopAnalysis
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kfg.visitor.executePipeline
 import kotlin.io.path.Path
 
-class MethodPrinter(override val cm: ClassManager) : MethodVisitor {
+class MethodPrinter(override val cm: ClassManager, override val pipeline: Pipeline) : MethodVisitor {
     /**
      * should override this method and cleanup all the temporary info between visitor invocations
      */
@@ -42,11 +43,10 @@ fun main() {
     val classManager = ClassManager(KfgConfig(Flags.readAll, true, verifyIR = false))
     classManager.initialize(jar)
     executePipeline(classManager, jar.pkg) {
-        +LoopAnalysis(classManager)
-        +LoopSimplifier(classManager)
-        +MethodPrinter(classManager)
-        +LoopOptimizer(classManager)
-        +MethodPrinter(classManager)
+        +LoopSimplifier(classManager, this@executePipeline)
+        +MethodPrinter(classManager, this@executePipeline)
+        +LoopOptimizer(classManager, this@executePipeline)
+        +MethodPrinter(classManager, this@executePipeline)
     }
     jar.unpack(classManager, Path("unpack"), failOnError = true)
     jar.update(classManager, Path("rebuild"))

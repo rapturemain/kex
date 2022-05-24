@@ -11,10 +11,13 @@ import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.type.Type
 import org.vorpal.research.kfg.type.VoidType
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.pipelineStub
 import org.vorpal.research.kthelper.collection.queueOf
 import org.vorpal.research.kthelper.logging.log
 
 class TermExpressionBuilder(override val cm: ClassManager) : TermBuilder(), MethodVisitor {
+    override val pipeline get() = pipelineStub()
+
     private val termMap = hashMapOf<Value, Term>()
     private val path = hashMapOf<BasicBlock, Term>()
     private lateinit var currentCond: Term

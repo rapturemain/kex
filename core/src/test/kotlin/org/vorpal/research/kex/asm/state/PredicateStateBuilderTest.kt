@@ -6,6 +6,8 @@ import org.vorpal.research.kex.asm.transform.LoopDeroller
 import org.vorpal.research.kfg.analysis.LoopSimplifier
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.instruction.UnreachableInst
+import org.vorpal.research.kfg.visitor.executePipeline
+import org.vorpal.research.kfg.visitor.schedule
 import org.vorpal.research.kthelper.graph.NoTopologicalSortingException
 import kotlin.test.Test
 
@@ -13,8 +15,9 @@ class PredicateStateBuilderTest : KexTest() {
 
     private fun performPSA(method: Method): PredicateStateBuilder {
         if (method.hasLoops) {
-            LoopSimplifier(cm).visit(method)
-            LoopDeroller(cm).visit(method)
+            executePipeline(cm, listOf(method)) {
+                schedule<LoopDeroller>()
+            }
         }
 
         val psa = PredicateStateBuilder(method)

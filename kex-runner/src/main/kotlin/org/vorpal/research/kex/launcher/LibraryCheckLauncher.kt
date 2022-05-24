@@ -1,6 +1,7 @@
 package org.vorpal.research.kex.launcher
 
 import kotlinx.serialization.ExperimentalSerializationApi
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.asm.analysis.defect.CallCiteChecker
 import org.vorpal.research.kex.asm.analysis.defect.DefectManager
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
@@ -16,11 +17,12 @@ class LibraryCheckLauncher(classPaths: List<String>, targetName: String) : KexLa
             kexConfig.getStringValue("libCheck", "target")
                 ?: unreachable { log.error("You need to specify package in which to look for library usages") }
         )
-        val psa = PredicateStateAnalysis(context.cm)
 
-        preparePackage(context, psa)
+        preparePackage(context)
         runPipeline(context) {
-            +CallCiteChecker(context, callCitePackage, psa)
+            schedule(CallCiteChecker(context.cm, this@runPipeline, callCitePackage), false)
+
+            registerProvider(ExecutionContextProvider(context))
         }
         clearClassPath()
         log.debug("Analysis finished, emitting results info ${DefectManager.defectFile}")

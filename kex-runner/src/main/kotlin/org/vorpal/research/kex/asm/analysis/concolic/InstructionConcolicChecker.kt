@@ -7,11 +7,15 @@ import kotlinx.coroutines.yield
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.InternalSerializationApi
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.annotations.AnnotationManager
 import org.vorpal.research.kex.asm.analysis.concolic.bfs.BfsPathSelectorImpl
 import org.vorpal.research.kex.asm.analysis.concolic.cgs.ContextGuidedSelector
+import org.vorpal.research.kex.asm.manager.ClassInstantiationDetector
 import org.vorpal.research.kex.asm.manager.isImpactable
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
+import org.vorpal.research.kex.asm.state.PredicateStateKfgAnalysis
+import org.vorpal.research.kex.asm.transform.SystemExitTransformer
 import org.vorpal.research.kex.compile.JavaCompilerDriver
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.descriptor.Descriptor
@@ -25,6 +29,8 @@ import org.vorpal.research.kex.parameters.filterStaticFinals
 import org.vorpal.research.kex.reanimator.UnsafeGenerator
 import org.vorpal.research.kex.reanimator.codegen.ExecutorTestCasePrinter
 import org.vorpal.research.kex.reanimator.codegen.klassName
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.smt.Checker
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.state.PredicateState
@@ -35,11 +41,12 @@ import org.vorpal.research.kex.trace.runner.SymbolicExternalTracingRunner
 import org.vorpal.research.kex.trace.runner.generateParameters
 import org.vorpal.research.kex.trace.symbolic.ExecutionResult
 import org.vorpal.research.kex.trace.symbolic.InstructionTrace
+import org.vorpal.research.kex.trace.symbolic.InstructionTraceManagerProvider
 import org.vorpal.research.kex.trace.symbolic.SymbolicState
 import org.vorpal.research.kex.util.getJunit
 import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.ir.Method
-import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.*
 import org.vorpal.research.kthelper.assert.unreachable
 import org.vorpal.research.kthelper.logging.debug
 import org.vorpal.research.kthelper.logging.log
@@ -67,11 +74,11 @@ private class CompilerHelper(val ctx: ExecutionContext) {
 @ExperimentalSerializationApi
 @InternalSerializationApi
 class InstructionConcolicChecker(
-    val ctx: ExecutionContext,
-    val traceManager: TraceManager<InstructionTrace>
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
 ) : MethodVisitor {
-    override val cm: ClassManager
-        get() = ctx.cm
+    val ctx get() = getProvider<ExecutionContextProvider, ExecutionContext>().provide()
+    val traceManager get() = getProvider<InstructionTraceManagerProvider, TraceManager<InstructionTrace>>().provide()
 
     private val compilerHelper = CompilerHelper(ctx)
 
@@ -80,6 +87,19 @@ class InstructionConcolicChecker(
     private var testIndex = 0
 
     override fun cleanup() {}
+
+    override fun registerPassDependencies() {
+        addRequiredPass<ClassInstantiationDetector>()
+        addRequiredPass<SystemExitTransformer>()
+
+        addRequiredProvider<ExecutionContextProvider>()
+        addRequiredProvider<InstructionTraceManagerProvider>()
+    }
+
+    override fun registerAnalysisDependencies() {
+        addRequiredAnalysis<PredicateStateKfgAnalysis>()
+        addRequiredAnalysis<SetterCollector>()
+    }
 
     override fun visit(method: Method) {
         if (method.isStaticInitializer || !method.hasBody) return
@@ -109,7 +129,11 @@ class InstructionConcolicChecker(
         collectTrace(method, parameters.asDescriptors)
 
     private fun collectTrace(method: Method, parameters: Parameters<Descriptor>): ExecutionResult? = tryOrNull {
-        val generator = UnsafeGenerator(ctx, method, method.klassName + testIndex++)
+        val generator = UnsafeGenerator(
+            ctx,
+            getAnalysis<SetterCollector, SetterAnalysisResult>(method.klass),
+            method,
+            method.klassName + testIndex++)
         generator.generate(parameters)
         val testFile = generator.emit()
 
@@ -127,8 +151,10 @@ class InstructionConcolicChecker(
         state: PredicateState,
         typeMap: TypeInfoMap = emptyMap<Term, KexType>().toTypeMap()
     ): PredicateState = transform(state) {
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+
         +KexRtAdapter(cm)
-        +RecursiveInliner(PredicateStateAnalysis(cm)) { index, psa ->
+        +RecursiveInliner(predicateStateAnalysis) { index, psa ->
             ConcolicInliner(
                 ctx,
                 typeMap,
@@ -154,7 +180,8 @@ class InstructionConcolicChecker(
     }
 
     private fun check(method: Method, state: SymbolicState): ExecutionResult? {
-        val checker = Checker(method, ctx, PredicateStateAnalysis(cm))
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val checker = Checker(method, ctx, predicateStateAnalysis)
         val query = state.path.asState()
         val concreteTypeInfo = state.concreteValueMap
             .mapValues { it.value.type }

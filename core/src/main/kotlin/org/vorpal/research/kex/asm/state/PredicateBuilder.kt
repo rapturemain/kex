@@ -13,12 +13,16 @@ import org.vorpal.research.kfg.ir.value.IntConstant
 import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.pipelineStub
 import org.vorpal.research.kthelper.assert.ktassert
 import org.vorpal.research.kthelper.logging.log
 
 class InvalidInstructionError(message: String) : Exception(message)
 
 class PredicateBuilder(override val cm: ClassManager) : MethodVisitor {
+    override val pipeline get() = pipelineStub()
+
     private val innerTermMap = hashMapOf<Value, Term>()
     private val innerPredicateMap = hashMapOf<Instruction, Predicate>()
     private val innerPhiPredicateMap = hashMapOf<Pair<BasicBlock, Instruction>, Predicate>()

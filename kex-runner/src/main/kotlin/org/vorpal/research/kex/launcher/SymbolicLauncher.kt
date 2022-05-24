@@ -2,13 +2,16 @@ package org.vorpal.research.kex.launcher
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.InternalSerializationApi
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.asm.analysis.testgen.DescriptorChecker
 import org.vorpal.research.kex.asm.analysis.testgen.MethodChecker
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.jacoco.CoverageReporter
 import org.vorpal.research.kex.reanimator.descriptor.DescriptorStatistics
+import org.vorpal.research.kex.trace.`object`.ActionTraceManagerProvider
 import org.vorpal.research.kex.trace.`object`.ObjectTraceManager
+import org.vorpal.research.kfg.visitor.schedule
 import org.vorpal.research.kthelper.logging.log
 import java.nio.file.Files
 
@@ -17,15 +20,16 @@ import java.nio.file.Files
 class SymbolicLauncher(classPaths: List<String>, targetName: String) : KexLauncher(classPaths, targetName) {
     override fun launch() {
         val traceManager = ObjectTraceManager()
-        val psa = PredicateStateAnalysis(context.cm)
         val useReanimator = kexConfig.getBooleanValue("reanimator", "enabled", true)
 
-        preparePackage(context, psa)
+        preparePackage(context)
         runPipeline(context) {
-            +when {
-                useReanimator -> DescriptorChecker(context, traceManager, psa)
-                else -> MethodChecker(context, traceManager, psa)
+            when {
+                useReanimator -> schedule<DescriptorChecker>()
+                else -> schedule<MethodChecker>()
             }
+            registerProvider(ActionTraceManagerProvider(traceManager))
+            registerProvider(ExecutionContextProvider(context))
         }
 
         DescriptorStatistics.printStatistics()

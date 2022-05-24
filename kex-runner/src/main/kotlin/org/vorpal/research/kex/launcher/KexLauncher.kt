@@ -1,6 +1,7 @@
 package org.vorpal.research.kex.launcher
 
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.asm.manager.ClassInstantiationDetector
 import org.vorpal.research.kex.asm.manager.CoverageCounter
 import org.vorpal.research.kex.asm.manager.MethodWrapperInitializer
@@ -34,6 +35,7 @@ import org.vorpal.research.kfg.util.Flags
 import org.vorpal.research.kfg.visitor.MethodVisitor
 import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kfg.visitor.executePipeline
+import org.vorpal.research.kfg.visitor.schedule
 import org.vorpal.research.kthelper.logging.log
 import java.net.URLClassLoader
 import java.nio.file.Path
@@ -145,7 +147,7 @@ abstract class KexLauncher(classPaths: List<String>, targetName: String) {
 
     abstract fun launch()
 
-    protected open fun createInstrumenter(context: ExecutionContext): MethodVisitor = RuntimeTraceCollector(context.cm)
+    protected open fun createInstrumenter(context: ExecutionContext, pipeline: Pipeline): MethodVisitor = RuntimeTraceCollector(context.cm, pipeline)
 
     private fun prepareInstrumentedClasspath(containers: List<Container>, target: Package, path: Path) {
         val klassPath = containers.map { it.path }
@@ -171,19 +173,21 @@ abstract class KexLauncher(classPaths: List<String>, targetName: String) {
 
             jar.unpack(cm, path, true)
 
-            executePipeline(cm, target) {
-                +SystemExitTransformer(cm)
-                +createInstrumenter(context)
-                +ClassWriter(context, path)
+            executePipeline(cm, target) exec@{
+                registerProvider(ExecutionContextProvider(context))
+
+                schedule<SystemExitTransformer>()
+                schedule(createInstrumenter(context, this@exec), false)
+                schedule(ClassWriter(context.cm, this@exec, path), false)
             }
         }
     }
 
-    protected fun <T : AbstractTrace> createCoverageCounter(cm: ClassManager, tm: TraceManager<T>) =
+    protected fun <T : AbstractTrace> createCoverageCounter(cm: ClassManager, pipeline: Pipeline, tm: TraceManager<T>) =
         when (analysisLevel) {
-            is MethodLevel -> CoverageCounter(cm, tm, setOf(analysisLevel.method))
-            is ClassLevel -> CoverageCounter(cm, tm, analysisLevel.klass)
-            is PackageLevel -> CoverageCounter(cm, tm, analysisLevel.pkg)
+            is MethodLevel -> CoverageCounter(cm, pipeline, tm, setOf(analysisLevel.method))
+            is ClassLevel -> CoverageCounter(cm, pipeline, tm, analysisLevel.klass)
+            is PackageLevel -> CoverageCounter(cm, pipeline, tm, analysisLevel.pkg)
         }
 
     protected fun runPipeline(context: ExecutionContext, target: Package, init: Pipeline.() -> Unit) =
@@ -197,17 +201,12 @@ abstract class KexLauncher(classPaths: List<String>, targetName: String) {
 
     protected open fun preparePackage(
         ctx: ExecutionContext,
-        psa: PredicateStateAnalysis,
         pkg: Package = Package.defaultPackage
     ) = runPipeline(ctx, pkg) {
-        +MethodWrapperInitializer(ctx.cm)
-        +LoopSimplifier(ctx.cm)
-        +LoopDeroller(ctx.cm)
-        +BranchAdapter(ctx.cm)
-        +psa
-        +MethodFieldAccessCollector(ctx, psa)
-        +SetterCollector(ctx)
-        +ClassInstantiationDetector(ctx.cm, visibilityLevel)
+        schedule<BranchAdapter>()
+        schedule<SetterCollector>()
+        schedule(ClassInstantiationDetector(ctx.cm, this@runPipeline, visibilityLevel), false)
+        registerProvider(ExecutionContextProvider(ctx))
     }
 
     protected fun updateClassPath(loader: URLClassLoader) {

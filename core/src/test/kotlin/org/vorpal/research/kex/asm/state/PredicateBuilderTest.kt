@@ -13,7 +13,7 @@ import org.vorpal.research.kfg.ir.BasicBlock
 import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.type.mergeTypes
-import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.*
 import org.vorpal.research.kthelper.assert.ktassert
 import org.vorpal.research.kthelper.logging.log
 import org.vorpal.research.kthelper.`try`
@@ -28,6 +28,8 @@ class PredicateBuilderTest : KexTest() {
         object : MethodVisitor {
             override val cm: ClassManager
                 get() = this@PredicateBuilderTest.cm
+            override val pipeline: Pipeline
+                get() = pipelineStub()
 
             override fun cleanup() {}
 
@@ -357,8 +359,9 @@ class PredicateBuilderTest : KexTest() {
             for (method in klass.allMethods) {
                 if (method.isAbstract) continue
                 if (method.hasLoops) {
-                    LoopSimplifier(cm).visit(method)
-                    LoopDeroller(cm).visit(method)
+                    executePipeline(cm, listOf(method)) {
+                        schedule<LoopDeroller>()
+                    }
                 }
                 val predicateBuilder = PredicateBuilder(cm)
                 predicateBuilder.visit(method)

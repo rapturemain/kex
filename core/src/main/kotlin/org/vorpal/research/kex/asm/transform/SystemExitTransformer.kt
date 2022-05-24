@@ -6,11 +6,15 @@ import org.vorpal.research.kfg.ir.value.EmptyUsageContext
 import org.vorpal.research.kfg.ir.value.instruction.CallInst
 import org.vorpal.research.kfg.ir.value.instruction.Instruction
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kthelper.collection.buildList
 
 class SystemExitCallException(val code: Int) : Throwable()
 
-class SystemExitTransformer(override val cm: ClassManager) : MethodVisitor {
+class SystemExitTransformer(
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
+) : MethodVisitor {
     private val systemClass = cm["java/lang/System"]
     private val exitMethod = systemClass.getMethod("exit", "(I)V")
 

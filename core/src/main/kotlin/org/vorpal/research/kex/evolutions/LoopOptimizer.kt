@@ -3,6 +3,7 @@ package org.vorpal.research.kex.evolutions
 
 import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.analysis.IRVerifier
+import org.vorpal.research.kfg.analysis.LoopSimplifier
 import org.vorpal.research.kfg.ir.BasicBlock
 import org.vorpal.research.kfg.ir.BodyBlock
 import org.vorpal.research.kfg.ir.Method
@@ -17,9 +18,11 @@ import org.vorpal.research.kfg.ir.value.usageContext
 import org.vorpal.research.kfg.type.IntType
 import org.vorpal.research.kfg.visitor.Loop
 import org.vorpal.research.kfg.visitor.LoopVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.addRequiredPass
 import ru.spbstu.*
 
-open class LoopOptimizer(cm: ClassManager) : Evolutions(cm), LoopVisitor {
+open class LoopOptimizer(cm: ClassManager, override val pipeline: Pipeline) : Evolutions(cm, pipeline), LoopVisitor {
     protected lateinit var ctx: MethodUsageContext
     protected val phiToEvo = mutableMapOf<PhiInst, Symbolic>()
     protected val freshVars = mutableMapOf<Loop, Var>()

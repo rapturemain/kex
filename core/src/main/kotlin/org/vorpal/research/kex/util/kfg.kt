@@ -15,6 +15,7 @@ import org.vorpal.research.kfg.ir.value.instruction.CmpOpcode
 import org.vorpal.research.kfg.ir.value.instruction.Instruction
 import org.vorpal.research.kfg.ir.value.instruction.InstructionBuilder
 import org.vorpal.research.kfg.type.*
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kthelper.assert.unreachable
 import org.vorpal.research.kthelper.compareTo
 import org.vorpal.research.kthelper.logging.log

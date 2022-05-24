@@ -12,6 +12,7 @@ import org.vorpal.research.kfg.ir.value.instruction.NewInst
 import org.vorpal.research.kfg.ir.value.instruction.ReturnInst
 import org.vorpal.research.kfg.type.*
 import org.vorpal.research.kfg.visitor.ClassVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kthelper.`try`
 
 
@@ -110,7 +111,11 @@ private object ClassInstantiationManagerImpl : ClassInstantiationManager {
     }
 }
 
-class ClassInstantiationDetector(override val cm: ClassManager, val visibilityLevel: Visibility) : ClassVisitor {
+class ClassInstantiationDetector(
+    override val cm: ClassManager,
+    override val pipeline: Pipeline,
+    val visibilityLevel: Visibility
+) : ClassVisitor {
     override fun cleanup() {}
 
     override fun visit(klass: Class) {

@@ -5,14 +5,19 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.asm.analysis.concolic.ConcolicStateBuilder
+import org.vorpal.research.kex.asm.manager.MethodWrapperInitializer
 import org.vorpal.research.kex.asm.manager.wrapper
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
+import org.vorpal.research.kex.asm.state.PredicateStateKfgAnalysis
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.parameters.Parameters
 import org.vorpal.research.kex.random.Randomizer
 import org.vorpal.research.kex.reanimator.ParameterGenerator
 import org.vorpal.research.kex.reanimator.Reanimator
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.smt.Checker
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.state.PredicateState
@@ -30,7 +35,7 @@ import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.NameMapperContext
 import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.ir.value.nameMapper
-import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.*
 import org.vorpal.research.kthelper.collection.firstOrElse
 import org.vorpal.research.kthelper.collection.stackOf
 import org.vorpal.research.kthelper.logging.log
@@ -52,11 +57,11 @@ private val onlyMain by lazy {
     )
 )
 class ConcolicChecker(
-    val ctx: ExecutionContext,
-    val psa: PredicateStateAnalysis,
-    private val manager: TraceManager<ActionTrace>
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
 ) : MethodVisitor {
-    override val cm: ClassManager get() = ctx.cm
+    val ctx get() = getProvider<ExecutionContextProvider, ExecutionContext>().provide()
+    val manager get() = getProvider<ActionTraceManagerProvider, TraceManager<ActionTrace>>().provide()
     val loader: ClassLoader get() = ctx.loader
     val random: Randomizer get() = ctx.random
     private val nameContext = NameMapperContext()
@@ -70,8 +75,22 @@ class ConcolicChecker(
         nameContext.clear()
     }
 
+    override fun registerPassDependencies() {
+        addRequiredPass<MethodWrapperInitializer>()
+
+        addRequiredProvider<ExecutionContextProvider>()
+        addRequiredProvider<ActionTraceManagerProvider>()
+    }
+
+    override fun registerAnalysisDependencies() {
+        addRequiredAnalysis<PredicateStateKfgAnalysis>()
+        addRequiredAnalysis<SetterCollector>()
+    }
+
     private fun initializeGenerator(method: Method) {
-        generator = Reanimator(ctx, psa, method)
+        val psa = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val setters = getAnalysis<SetterCollector, SetterAnalysisResult>(method.klass)
+        generator = Reanimator(ctx, psa, setters, method)
     }
 
     private fun analyze(method: Method) {
@@ -125,6 +144,7 @@ class ConcolicChecker(
             }
         }.dropWhile { !(it is MethodEntry && it.method == method.wrapper) }
 
+        val psa = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
         val builder = ConcolicStateBuilder(cm, psa)
         for ((index, action) in filteredTrace.withIndex()) {
             when (action) {
@@ -263,6 +283,7 @@ class ConcolicChecker(
         log.debug("Collected trace: $state")
         log.debug("Mutated trace: $mutated")
 
+        val psa = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
         val checker = Checker(method, ctx, psa)
         val result = checker.prepareAndCheck(mutated)
         if (result !is Result.SatResult) return null

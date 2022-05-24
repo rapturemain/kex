@@ -13,6 +13,8 @@ import org.vorpal.research.kex.parameters.Parameters
 import org.vorpal.research.kex.reanimator.actionsequence.ActionList
 import org.vorpal.research.kex.reanimator.actionsequence.ActionSequence
 import org.vorpal.research.kex.reanimator.actionsequence.CodeAction
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.smt.Checker
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.state.PredicateState
@@ -33,6 +35,7 @@ import org.vorpal.research.kthelper.tryOrNull
 class GeneratorContext(
     val context: ExecutionContext,
     val psa: PredicateStateAnalysis,
+    val setters: SetterAnalysisResult,
     val visibilityLevel: Visibility
 ) {
     private val useRecCtors by lazy {

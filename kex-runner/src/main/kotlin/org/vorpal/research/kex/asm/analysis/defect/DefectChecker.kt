@@ -1,16 +1,21 @@
 package org.vorpal.research.kex.asm.analysis.defect
 
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.annotations.AnnotationManager
 import org.vorpal.research.kex.asm.analysis.SearchStrategy
 import org.vorpal.research.kex.asm.analysis.UnfilteredDfsStrategy
 import org.vorpal.research.kex.asm.manager.MethodManager
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
 import org.vorpal.research.kex.asm.state.PredicateStateBuilder
+import org.vorpal.research.kex.asm.state.PredicateStateKfgAnalysis
+import org.vorpal.research.kex.asm.transform.LoopDeroller
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.ktype.KexBool
 import org.vorpal.research.kex.ktype.KexInt
 import org.vorpal.research.kex.reanimator.Reanimator
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.smt.SMTProxySolver
 import org.vorpal.research.kex.state.PredicateState
@@ -21,12 +26,13 @@ import org.vorpal.research.kex.state.term.Term
 import org.vorpal.research.kex.state.term.term
 import org.vorpal.research.kex.state.transformer.*
 import org.vorpal.research.kex.state.wrap
+import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.ir.BasicBlock
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.StringConstant
 import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.ir.value.instruction.*
-import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.*
 import org.vorpal.research.kthelper.assert.unreachable
 import org.vorpal.research.kthelper.logging.log
 import org.vorpal.research.kthelper.tryOrNull
@@ -37,10 +43,10 @@ private val isSlicingEnabled by lazy { kexConfig.getBooleanValue("smt", "slicing
 private val logQuery by lazy { kexConfig.getBooleanValue("smt", "logQuery", false) }
 
 class DefectChecker(
-    val ctx: ExecutionContext,
-    private val psa: PredicateStateAnalysis
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
 ) : MethodVisitor {
-    override val cm get() = ctx.cm
+    val ctx get() = getProvider<ExecutionContextProvider, ExecutionContext>().provide()
     val loader get() = ctx.loader
     val dm = DefectManager
     val im = MethodManager.KexIntrinsicManager
@@ -53,8 +59,20 @@ class DefectChecker(
     private var nonNullityInfo = mutableMapOf<BasicBlock, Set<Value>>()
     private var nonNulls = mutableSetOf<Value>()
 
+    override fun registerPassDependencies() {
+        addRequiredPass<LoopDeroller>()
+        addRequiredProvider<ExecutionContextProvider>()
+    }
+
+    override fun registerAnalysisDependencies() {
+        addRequiredAnalysis<PredicateStateKfgAnalysis>()
+        addRequiredAnalysis<SetterCollector>()
+    }
+
     private fun initializeGenerator() {
-        generator = Reanimator(ctx, psa, method)
+        val psa = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val setters = getAnalysis<SetterCollector, SetterAnalysisResult>(method.klass)
+        generator = Reanimator(ctx, psa, setters, method)
         testIndex = 0
     }
 
@@ -65,6 +83,7 @@ class DefectChecker(
     override fun visit(method: Method) {
         cleanup()
 
+        val psa = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
         this.builder = psa.builder(method)
         this.method = method
         if (!method.hasBody) return
@@ -230,12 +249,13 @@ class DefectChecker(
     }
 
     fun prepareState(ps: PredicateState, typeInfoMap: TypeInfoMap) = transform(ps) {
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
         +AnnotationAdapter(method, AnnotationManager.defaultLoader)
-        +RecursiveInliner(psa) { index, psa ->
+        +RecursiveInliner(predicateStateAnalysis) { index, psa ->
             ConcreteImplInliner(method.cm.type, typeInfoMap, psa, inlineIndex = index)
         }
-        +StaticFieldInliner(ctx, psa)
-        +RecursiveConstructorInliner(psa)
+        +StaticFieldInliner(ctx, predicateStateAnalysis)
+        +RecursiveConstructorInliner(predicateStateAnalysis)
         +IntrinsicAdapter
         +KexIntrinsicsAdapter()
         +NullityAnnotator(nonNulls.map { term { value(it) } }.toSet())

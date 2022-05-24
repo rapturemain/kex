@@ -6,8 +6,6 @@ import org.vorpal.research.kex.descriptor.Descriptor
 import org.vorpal.research.kex.descriptor.ObjectDescriptor
 import org.vorpal.research.kex.parameters.Parameters
 import org.vorpal.research.kex.reanimator.actionsequence.*
-import org.vorpal.research.kex.reanimator.collector.hasSetter
-import org.vorpal.research.kex.reanimator.collector.setter
 import org.vorpal.research.kfg.ir.Class
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kthelper.collection.queueOf
@@ -208,16 +206,16 @@ open class AnyGenerator(private val fallback: Generator) : Generator {
                 fields.remove(field)
                 reduce()
 
-            } else if (kfgField.hasSetter && visibilityLevel <= kfgField.setter.visibility) {
+            } else if (setters.hasSetter(kfgField) && visibilityLevel <= setters.setter(kfgField).visibility) {
                 log.info("Using setter for $field")
 
-                val (result, args) = kfgField.setter.executeAsSetter(this@generateSetters) ?: continue
+                val (result, args) = setters.setter(kfgField).executeAsSetter(this@generateSetters) ?: continue
                 val objectDescriptor = result as? ObjectDescriptor
                 if (objectDescriptor != null && field notIn objectDescriptor) {
                     val remapping = { mutableMapOf<Descriptor, Descriptor>(result to this@generateSetters) }
                     val generatedArgs = generateArgs(args.map { it.deepCopy(remapping()) }, generationDepth + 1)
                         ?: continue
-                    calls += MethodCall(kfgField.setter, generatedArgs)
+                    calls += MethodCall(setters.setter(kfgField), generatedArgs)
                     accept(result)
                     reduce()
                     log.info("Used setter for field $field, new desc: $this")

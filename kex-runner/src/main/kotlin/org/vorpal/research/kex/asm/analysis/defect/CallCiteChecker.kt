@@ -3,14 +3,19 @@
 package org.vorpal.research.kex.asm.analysis.defect
 
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.annotations.AnnotationManager
 import org.vorpal.research.kex.asm.manager.MethodManager
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
+import org.vorpal.research.kex.asm.state.PredicateStateKfgAnalysis
+import org.vorpal.research.kex.asm.transform.LoopDeroller
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.ktype.KexBool
 import org.vorpal.research.kex.ktype.KexInt
 import org.vorpal.research.kex.ktype.kexType
 import org.vorpal.research.kex.reanimator.Reanimator
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.smt.SMTProxySolver
 import org.vorpal.research.kex.state.BasicState
@@ -32,8 +37,7 @@ import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.ir.value.instruction.ArrayStoreInst
 import org.vorpal.research.kfg.ir.value.instruction.CallInst
 import org.vorpal.research.kfg.ir.value.instruction.Instruction
-import org.vorpal.research.kfg.visitor.MethodVisitor
-import org.vorpal.research.kfg.visitor.executePipeline
+import org.vorpal.research.kfg.visitor.*
 import org.vorpal.research.kthelper.assert.unreachable
 import org.vorpal.research.kthelper.logging.log
 import org.vorpal.research.kthelper.runIf
@@ -45,18 +49,27 @@ private val isMemspacingEnabled by lazy { kexConfig.getBooleanValue("smt", "mems
 private val isSlicingEnabled by lazy { kexConfig.getBooleanValue("smt", "slicing", false) }
 
 class CallCiteChecker(
-    val ctx: ExecutionContext,
-    val callCiteTarget: Package,
-    val psa: PredicateStateAnalysis
+    override val cm: ClassManager,
+    override val pipeline: Pipeline,
+    val callCiteTarget: Package
 ) : MethodVisitor {
-    override val cm: ClassManager
-        get() = ctx.cm
+    val ctx get() = getProvider<ExecutionContextProvider, ExecutionContext>().provide()
     private val dm get() = DefectManager
     private val im get() = MethodManager.KexIntrinsicManager
     private lateinit var method: Method
     private lateinit var callCites: Set<Instruction>
     private lateinit var generator: Reanimator
     private var testIndex = 0
+
+    override fun registerPassDependencies() {
+        addRequiredPass<LoopDeroller>()
+        addRequiredProvider<ExecutionContextProvider>()
+    }
+
+    override fun registerAnalysisDependencies() {
+        addRequiredAnalysis<PredicateStateKfgAnalysis>()
+        addRequiredAnalysis<SetterCollector>()
+    }
 
     override fun cleanup() {}
 
@@ -92,7 +105,9 @@ class CallCiteChecker(
     }
 
     private fun initializeGenerator() {
-        generator = Reanimator(ctx, psa, method)
+        val psa = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val setters = getAnalysis<SetterCollector, SetterAnalysisResult>(method.klass)
+        generator = Reanimator(ctx, psa, setters, method)
         testIndex = 0
     }
 
@@ -108,7 +123,9 @@ class CallCiteChecker(
     }
 
     private fun getState(instruction: Instruction) =
-        psa.builder(instruction.parent.parent).getInstructionState(instruction)
+        getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+            .builder(instruction.parent.parent)
+            .getInstructionState(instruction)
 
     private fun buildInlinedState(
         callState: PredicateState,
@@ -153,7 +170,9 @@ class CallCiteChecker(
         executePipeline(cm, callCiteTarget) {
             +object : MethodVisitor {
                 override val cm: ClassManager
-                    get() = this@CallCiteChecker.cm
+                    get() = this@executePipeline.cm
+                override val pipeline: Pipeline
+                    get() = this@executePipeline
 
                 override fun cleanup() {}
 
@@ -203,11 +222,12 @@ class CallCiteChecker(
     }
 
     fun prepareState(ps: PredicateState, typeInfoMap: TypeInfoMap) = transform(ps) {
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
         +AnnotationAdapter(method, AnnotationManager.defaultLoader)
-        +RecursiveInliner(psa) { index, psa ->
+        +RecursiveInliner(predicateStateAnalysis) { index, psa ->
             ConcreteImplInliner(method.cm.type, typeInfoMap, psa, inlineIndex = index)
         }
-        +StaticFieldInliner(ctx, psa)
+        +StaticFieldInliner(ctx, predicateStateAnalysis)
         +IntrinsicAdapter
         +KexIntrinsicsAdapter()
         +DoubleTypeAdapter()

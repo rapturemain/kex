@@ -2,40 +2,45 @@ package org.vorpal.research.kex.asm.analysis.testgen
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.InternalSerializationApi
-import org.vorpal.research.kex.ExecutionContext
 import org.vorpal.research.kex.asm.manager.instantiationManager
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
+import org.vorpal.research.kex.asm.state.PredicateStateKfgAnalysis
 import org.vorpal.research.kex.ktype.KexRtManager.rtMapped
 import org.vorpal.research.kex.parameters.Parameters
 import org.vorpal.research.kex.random.GenerationException
 import org.vorpal.research.kex.reanimator.Reanimator
 import org.vorpal.research.kex.reanimator.codegen.validName
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.smt.Checker
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.state.PredicateState
 import org.vorpal.research.kex.state.transformer.*
-import org.vorpal.research.kex.trace.TraceManager
-import org.vorpal.research.kex.trace.`object`.ActionTrace
 import org.vorpal.research.kex.util.TimeoutException
+import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.ir.BasicBlock
 import org.vorpal.research.kfg.ir.Method
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.getAnalysis
 import org.vorpal.research.kthelper.logging.log
 import org.vorpal.research.kthelper.tryOrNull
 
 @ExperimentalSerializationApi
 @InternalSerializationApi
 class DescriptorChecker(
-    ctx: ExecutionContext,
-    tm: TraceManager<ActionTrace>,
-    psa: PredicateStateAnalysis
-) : MethodChecker(ctx, tm, psa) {
+    cm: ClassManager,
+    pipeline: Pipeline
+) : MethodChecker(cm, pipeline) {
 
     override fun initializeGenerator(method: Method) {
-        generator = Reanimator(ctx, psa, method)
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val setters = getAnalysis<SetterCollector, SetterAnalysisResult>(method.klass)
+        generator = Reanimator(ctx, predicateStateAnalysis, setters, method)
     }
 
     override fun coverBlock(method: Method, block: BasicBlock): Result {
-        val checker = Checker(method, ctx, psa)
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val checker = Checker(method, ctx, predicateStateAnalysis)
         val ps = checker.createState(method, block)
             ?: return Result.UnknownResult("Could not resolve types for ${block.name}")
 
@@ -88,7 +93,8 @@ class DescriptorChecker(
     }
 
     private fun resolveTypes(method: Method, block: BasicBlock): TypeInfoMap? {
-        val checker = Checker(method, ctx, psa)
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val checker = Checker(method, ctx, predicateStateAnalysis)
         val ps = checker.createState(block.terminator) ?: return null
 
         val result = try {

@@ -1,5 +1,6 @@
 package org.vorpal.research.kex.asm.transform
 
+import org.vorpal.research.kex.asm.manager.MethodWrapperInitializer
 import org.vorpal.research.kex.asm.manager.wrapper
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.evolutions.LoopOptimizer
@@ -7,6 +8,7 @@ import org.vorpal.research.kex.evolutions.defaultVar
 import org.vorpal.research.kex.evolutions.evaluateEvolutions
 import org.vorpal.research.kex.evolutions.walkLoops
 import org.vorpal.research.kfg.ClassManager
+import org.vorpal.research.kfg.analysis.LoopSimplifier
 import org.vorpal.research.kfg.ir.BasicBlock
 import org.vorpal.research.kfg.ir.BodyBlock
 import org.vorpal.research.kfg.ir.CatchBlock
@@ -14,6 +16,8 @@ import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.*
 import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.visitor.Loop
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.addRequiredPass
 import org.vorpal.research.kthelper.assert.unreachable
 import org.vorpal.research.kthelper.graph.GraphTraversal
 import org.vorpal.research.kthelper.graph.NoTopologicalSortingException
@@ -28,7 +32,7 @@ private val derollCount = kexConfig.getIntValue("loop", "derollCount", 3)
 private val maxDerollCount = kexConfig.getIntValue("loop", "maxDerollCount", 0)
 private val useBackstabbing = kexConfig.getBooleanValue("loop", "useBackstabbing", false)
 
-class LoopDeroller(override val cm: ClassManager) : LoopOptimizer(cm) {
+class LoopDeroller(override val cm: ClassManager, override val pipeline: Pipeline) : LoopOptimizer(cm, pipeline) {
     companion object {
         const val DEROLLED_POSTFIX = ".deroll"
 
@@ -89,6 +93,10 @@ class LoopDeroller(override val cm: ClassManager) : LoopOptimizer(cm) {
         fun getOrDefault(value: Value, default: Value) = instMappings.getOrDefault(value, default)
     }
 
+    override fun registerPassDependencies() {
+        addRequiredPass<LoopSimplifier>()
+        addRequiredPass<MethodWrapperInitializer>()
+    }
 
     override fun cleanup() {}
 

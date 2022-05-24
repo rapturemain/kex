@@ -12,11 +12,14 @@ import org.vorpal.research.kex.reanimator.actionsequence.ActionSequence
 import org.vorpal.research.kex.reanimator.actionsequence.generator.ConcolicSequenceGenerator
 import org.vorpal.research.kex.reanimator.codegen.ExecutorTestCasePrinter
 import org.vorpal.research.kex.reanimator.codegen.packageName
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
 import org.vorpal.research.kex.smt.SMTModel
 import org.vorpal.research.kex.state.PredicateState
 import org.vorpal.research.kex.state.transformer.generateFinalDescriptors
 import org.vorpal.research.kex.state.transformer.generateInputByModel
 import org.vorpal.research.kfg.ir.Method
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.pipelineStub
 import org.vorpal.research.kthelper.logging.log
 import java.nio.file.Path
 
@@ -26,10 +29,11 @@ private val visibilityLevel by lazy {
 
 class UnsafeGenerator(
     override val ctx: ExecutionContext,
+    val setters: SetterAnalysisResult,
     val method: Method,
     val testName: String
 ) : ParameterGenerator {
-    private val asGenerator = ConcolicSequenceGenerator(ctx, PredicateStateAnalysis(ctx.cm), visibilityLevel)
+    private val asGenerator = ConcolicSequenceGenerator(ctx, PredicateStateAnalysis(ctx.cm, pipelineStub()), setters, visibilityLevel)
     private val printer = ExecutorTestCasePrinter(ctx, method.packageName, testName)
     val testKlassName = printer.fullKlassName
 

@@ -17,6 +17,7 @@ import org.vorpal.research.kex.state.term.ConstBoolTerm
 import org.vorpal.research.kex.state.term.ConstIntTerm
 import org.vorpal.research.kex.state.term.isConst
 import org.vorpal.research.kex.state.term.term
+import org.vorpal.research.kex.trace.`object`.ActionTraceManagerProvider
 import org.vorpal.research.kex.trace.`object`.ObjectTraceManager
 import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.KfgConfig
@@ -32,7 +33,9 @@ import org.vorpal.research.kfg.ir.value.instruction.CallInst
 import org.vorpal.research.kfg.ir.value.instruction.Instruction
 import org.vorpal.research.kfg.util.Flags
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kfg.visitor.executePipeline
+import org.vorpal.research.kfg.visitor.schedule
 import org.vorpal.research.kthelper.logging.log
 import java.net.URLClassLoader
 import java.nio.file.Files
@@ -84,13 +87,16 @@ abstract class KexRunnerTest : KexTest() {
         container.unpack(cm, path, true)
 
         executePipeline(cm, target) {
-            +SystemExitTransformer(cm)
-            +createTraceCollector(context)
-            +ClassWriter(context, path)
+            schedule<SystemExitTransformer>()
+            schedule(createTraceCollector(context, this@executePipeline), false)
+            schedule(ClassWriter(cm, this@executePipeline, path), false)
+
+            registerProvider(ExecutionContextProvider(context))
         }
     }
 
-    protected open fun createTraceCollector(context: ExecutionContext): MethodVisitor = RuntimeTraceCollector(context.cm)
+    protected open fun createTraceCollector(context: ExecutionContext, pipeline: Pipeline): MethodVisitor =
+        RuntimeTraceCollector(context.cm, pipeline)
 
     protected fun getReachables(method: Method): List<Instruction> {
         val klass = AssertIntrinsics::class.qualifiedName!!.replace(".", "/")
@@ -178,14 +184,12 @@ abstract class KexRunnerTest : KexTest() {
 
     fun runPipelineOn(klass: Class) {
         val traceManager = ObjectTraceManager()
-        val psa = PredicateStateAnalysis(analysisContext.cm)
 
         updateClassPath(analysisContext.loader as URLClassLoader)
         executePipeline(analysisContext.cm, klass) {
-            +LoopSimplifier(analysisContext.cm)
-            +LoopDeroller(analysisContext.cm)
-            +psa
-            +MethodChecker(analysisContext, traceManager, psa)
+            schedule<MethodChecker>()
+            registerProvider(ActionTraceManagerProvider(traceManager))
+            registerProvider(ExecutionContextProvider(analysisContext))
             // todo: add check that generation is actually successful
         }
         clearClassPath()

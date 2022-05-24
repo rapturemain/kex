@@ -1,11 +1,14 @@
 package org.vorpal.research.kex.evolutions
 
 import org.vorpal.research.kfg.ClassManager
+import org.vorpal.research.kfg.analysis.LoopSimplifier
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.*
 import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.visitor.Loop
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.addRequiredPass
 import ru.spbstu.*
 import ru.spbstu.wheels.mapToArray
 
@@ -76,7 +79,7 @@ class TransformScope(val body: TransformScope.(Symbolic) -> Symbolic) {
 /**
  * Visitor that performs evaluation of all evolutions in CFG.
  */
-open class Evolutions(override val cm: ClassManager) : MethodVisitor {
+open class Evolutions(override val cm: ClassManager, override val pipeline: Pipeline) : MethodVisitor {
     protected val inst2loop = mutableMapOf<Instruction, Loop>()
     protected val loopPhis = mutableMapOf<PhiInst, Loop>()
     protected val inst2var = mutableMapOf<Value, Var>()
@@ -200,40 +203,44 @@ open class Evolutions(override val cm: ClassManager) : MethodVisitor {
                     else -> Undefined
                 }
             }
-        is Apply -> return recur
-        is Product -> {
-            // decompose recur to (Alpha * me)
-            val alpha = recur / me
-            if (alpha.hasVar(me)) return Undefined
+            is Apply -> return recur
+            is Product -> {
+                // decompose recur to (Alpha * me)
+                val alpha = recur / me
+                if (alpha.hasVar(me)) return Undefined
 
-            return Evolution(v.loop, EvoOpcode.TIMES, base, alpha)
-        }
-        is Sum -> {
-            // decompose recur to (Alpha * me + Beta)
-            val (l, beta) = recur.partition { it.hasVar(me) }
-            val alpha = l / me
-            if (alpha.hasVar(me)) return Undefined
-            return when {
-                alpha == Const.ONE -> Evolution(v.loop, EvoOpcode.PLUS, base, beta)
-                beta == Const.ZERO -> Evolution(v.loop, EvoOpcode.TIMES, base, alpha)
-                alpha == Const.ZERO -> Evolution(v.loop, EvoOpcode.PLUS, Const.ZERO, beta)
-                else -> Evolution(
-                    v.loop,
-                    EvoOpcode.TIMES,
-                    Evolution(
+                return Evolution(v.loop, EvoOpcode.TIMES, base, alpha)
+            }
+            is Sum -> {
+                // decompose recur to (Alpha * me + Beta)
+                val (l, beta) = recur.partition { it.hasVar(me) }
+                val alpha = l / me
+                if (alpha.hasVar(me)) return Undefined
+                return when {
+                    alpha == Const.ONE -> Evolution(v.loop, EvoOpcode.PLUS, base, beta)
+                    beta == Const.ZERO -> Evolution(v.loop, EvoOpcode.TIMES, base, alpha)
+                    alpha == Const.ZERO -> Evolution(v.loop, EvoOpcode.PLUS, Const.ZERO, beta)
+                    else -> Evolution(
                         v.loop,
-                        EvoOpcode.PLUS,
-                        base,
-                        Evolution(v.loop, EvoOpcode.TIMES, beta, alpha.reciprocal())
-                    ),
-                    alpha
-                )
+                        EvoOpcode.TIMES,
+                        Evolution(
+                            v.loop,
+                            EvoOpcode.PLUS,
+                            base,
+                            Evolution(v.loop, EvoOpcode.TIMES, beta, alpha.reciprocal())
+                        ),
+                        alpha
+                    )
+                }
             }
         }
     }
-}
 
-override fun cleanup() {}
+    override fun registerPassDependencies() {
+        addRequiredPass<LoopSimplifier>()
+    }
+
+    override fun cleanup() {}
 }
 
 /**

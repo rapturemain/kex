@@ -10,6 +10,8 @@ import org.vorpal.research.kfg.Package
 import org.vorpal.research.kfg.ir.Class
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
+import org.vorpal.research.kfg.visitor.addRequiredPass
 import org.vorpal.research.kthelper.logging.log
 import java.util.*
 
@@ -52,25 +54,31 @@ data class CoverageInfo(
 
 class CoverageCounter<T : AbstractTrace> private constructor(
     override val cm: ClassManager,
+    override val pipeline: Pipeline,
     private val tm: TraceManager<T>,
     val methodFilter: (Method) -> Boolean
 ) : MethodVisitor {
     private val methodInfos = hashMapOf<Method, CoverageInfo>()
 
-    constructor(cm: ClassManager, tm: TraceManager<T>) : this(cm, tm, { true })
-    constructor(cm: ClassManager, tm: TraceManager<T>, pkg: Package) :
-            this(cm, tm, { pkg.isParent(it.klass.pkg) })
+    constructor(cm: ClassManager, pipeline: Pipeline, tm: TraceManager<T>) :
+            this(cm, pipeline, tm, { true })
+    constructor(cm: ClassManager, pipeline: Pipeline, tm: TraceManager<T>, pkg: Package) :
+            this(cm, pipeline, tm, { pkg.isParent(it.klass.pkg) })
 
-    constructor(cm: ClassManager, tm: TraceManager<T>, klass: Class) :
-            this(cm, tm, { it.klass == klass })
+    constructor(cm: ClassManager, pipeline: Pipeline, tm: TraceManager<T>, klass: Class) :
+            this(cm, pipeline, tm, { it.klass == klass })
 
-    constructor(cm: ClassManager, tm: TraceManager<T>, methods: Set<Method>) :
-            this(cm, tm, { it in methods })
+    constructor(cm: ClassManager, pipeline: Pipeline, tm: TraceManager<T>, methods: Set<Method>) :
+            this(cm, pipeline, tm, { it in methods })
 
     val totalCoverage: CoverageInfo
         get() = methodInfos.values.fold(CoverageInfo()) { acc, coverageInfo ->
             acc + coverageInfo
         }
+
+    override fun registerPassDependencies() {
+        addRequiredPass<MethodWrapperInitializer>()
+    }
 
     private val Method.isInteresting: Boolean
         get() = when {

@@ -9,14 +9,20 @@ import org.vorpal.research.kex.state.PredicateState
 import org.vorpal.research.kex.state.predicate.Predicate
 import org.vorpal.research.kex.state.term.Term
 import org.vorpal.research.kex.trace.AbstractTrace
+import org.vorpal.research.kex.trace.TraceManager
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.ir.value.instruction.Instruction
+import org.vorpal.research.kfg.visitor.KfgProvider
 
 @Serializable
 data class InstructionTrace(
     val trace: List<@Contextual Instruction> = listOf()
 ) : AbstractTrace(), Iterable<Instruction> by trace
+
+class InstructionTraceManagerProvider(private val tm: TraceManager<InstructionTrace>) : KfgProvider<TraceManager<InstructionTrace>> {
+    override fun provide() = tm
+}
 
 @Serializable
 data class Clause(

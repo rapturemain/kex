@@ -5,10 +5,14 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
 import org.vorpal.research.kex.ExecutionContext
+import org.vorpal.research.kex.ExecutionContextProvider
 import org.vorpal.research.kex.asm.analysis.DfsStrategy
 import org.vorpal.research.kex.asm.analysis.SearchStrategy
 import org.vorpal.research.kex.asm.manager.isImpactable
 import org.vorpal.research.kex.asm.state.PredicateStateAnalysis
+import org.vorpal.research.kex.asm.state.PredicateStateKfgAnalysis
+import org.vorpal.research.kex.asm.transform.BranchAdapter
+import org.vorpal.research.kex.asm.transform.LoopDeroller
 import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.parameters.Parameters
 import org.vorpal.research.kex.random.GenerationException
@@ -17,12 +21,15 @@ import org.vorpal.research.kex.reanimator.ParameterGenerator
 import org.vorpal.research.kex.reanimator.UnsafeGenerator
 import org.vorpal.research.kex.reanimator.codegen.klassName
 import org.vorpal.research.kex.reanimator.codegen.validName
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
+import org.vorpal.research.kex.reanimator.collector.SetterCollector
 import org.vorpal.research.kex.serialization.KexSerializer
 import org.vorpal.research.kex.smt.Checker
 import org.vorpal.research.kex.smt.Result
 import org.vorpal.research.kex.state.PredicateState
 import org.vorpal.research.kex.trace.TraceManager
 import org.vorpal.research.kex.trace.`object`.ActionTrace
+import org.vorpal.research.kex.trace.`object`.ActionTraceManagerProvider
 import org.vorpal.research.kex.trace.runner.ObjectTracingRunner
 import org.vorpal.research.kex.util.TimeoutException
 import org.vorpal.research.kfg.ClassManager
@@ -31,7 +38,7 @@ import org.vorpal.research.kfg.ir.Class
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.ir.value.NameMapperContext
 import org.vorpal.research.kfg.ir.value.instruction.UnreachableInst
-import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.*
 import org.vorpal.research.kthelper.graph.DominatorTreeBuilder
 import org.vorpal.research.kthelper.logging.debug
 import org.vorpal.research.kthelper.logging.log
@@ -56,15 +63,34 @@ data class Failure(
 @ExperimentalSerializationApi
 @InternalSerializationApi
 open class MethodChecker(
-    val ctx: ExecutionContext,
-    protected val tm: TraceManager<ActionTrace>,
-    protected val psa: PredicateStateAnalysis) : MethodVisitor {
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
+) : MethodVisitor {
     protected val nameContext = NameMapperContext()
-    override val cm: ClassManager get() = ctx.cm
     val random: Randomizer get() = ctx.random
     val loader: ClassLoader get() = ctx.loader
+
+    val ctx: ExecutionContext
+        get() = getProvider<ExecutionContextProvider, ExecutionContext>().provide()
+
+    val tm: TraceManager<ActionTrace>
+        get() = getProvider<ActionTraceManagerProvider, TraceManager<ActionTrace>>().provide()
+
     lateinit var generator: ParameterGenerator
         protected set
+
+    override fun registerPassDependencies() {
+        addRequiredPass<LoopDeroller>()
+        addRequiredPass<BranchAdapter>()
+
+        addRequiredProvider<ExecutionContextProvider>()
+        addRequiredProvider<ActionTraceManagerProvider>()
+    }
+
+    override fun registerAnalysisDependencies() {
+        addRequiredAnalysis<PredicateStateKfgAnalysis>()
+        addRequiredAnalysis<SetterCollector>()
+    }
 
     private fun dumpPS(method: Method, message: String, state: PredicateState) = `try` {
         val failDirPath = outputDirectory.resolve(failDir)
@@ -81,7 +107,12 @@ open class MethodChecker(
     }
 
     protected open fun initializeGenerator(method: Method) {
-        generator = UnsafeGenerator(ctx, method, method.klassName)
+        generator = UnsafeGenerator(
+            ctx,
+            getAnalysis<SetterCollector, SetterAnalysisResult>(method.klass),
+            method,
+            method.klassName
+        )
     }
 
     protected open fun getSearchStrategy(method: Method): SearchStrategy = DfsStrategy(method)
@@ -142,7 +173,8 @@ open class MethodChecker(
     }
 
     protected open fun coverBlock(method: Method, block: BasicBlock): Result {
-        val checker = Checker(method, ctx, psa)
+        val predicateStateAnalysis = getAnalysis<PredicateStateKfgAnalysis, PredicateStateAnalysis>(method)
+        val checker = Checker(method, ctx, predicateStateAnalysis)
         val ps = checker.createState(block.terminator)
                 ?: return Result.UnknownResult("Could not create a predicate state for instruction")
 

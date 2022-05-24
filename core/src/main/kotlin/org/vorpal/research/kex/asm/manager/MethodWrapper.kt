@@ -7,6 +7,7 @@ import org.vorpal.research.kfg.ir.value.NameMapper
 import org.vorpal.research.kfg.ir.value.Value
 import org.vorpal.research.kfg.type.parseStringToType
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 
 @JvmInline
 value class ValueWrapper(
@@ -73,7 +74,7 @@ private object MethodWrapperManager {
     }
 }
 
-class MethodWrapperInitializer(override val cm: ClassManager) : MethodVisitor {
+class MethodWrapperInitializer(override val cm: ClassManager, override val pipeline: Pipeline) : MethodVisitor {
     override fun cleanup() {}
 
     override fun visit(method: Method) {

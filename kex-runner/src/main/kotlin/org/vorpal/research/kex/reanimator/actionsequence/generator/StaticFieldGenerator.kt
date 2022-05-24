@@ -5,8 +5,6 @@ import org.vorpal.research.kex.config.kexConfig
 import org.vorpal.research.kex.descriptor.ClassDescriptor
 import org.vorpal.research.kex.descriptor.Descriptor
 import org.vorpal.research.kex.reanimator.actionsequence.*
-import org.vorpal.research.kex.reanimator.collector.hasSetter
-import org.vorpal.research.kex.reanimator.collector.setter
 import org.vorpal.research.kthelper.assert.ktassert
 import org.vorpal.research.kthelper.collection.queueOf
 import org.vorpal.research.kthelper.logging.log
@@ -117,17 +115,17 @@ class StaticFieldGenerator(private val fallback: Generator) : Generator {
                 fields.remove(field)
                 reduce()
 
-            } else if (kfgField.hasSetter && visibilityLevel <= kfgField.setter.visibility) {
+            } else if (setters.hasSetter(kfgField) && visibilityLevel <= setters.setter(kfgField).visibility) {
                 log.info("Using setter for $field")
 
-                val (instance, args, statics) = kfgField.setter.executeAsStaticSetter(this@generateSetters) ?: continue
+                val (instance, args, statics) = setters.setter(kfgField).executeAsStaticSetter(this@generateSetters) ?: continue
                 ktassert(instance == null) { log.error("`this` descriptor is not null in static") }
 
                 val resultingDescriptor = statics.firstOrNull { it.type == klass } as? ClassDescriptor
 
                 if (resultingDescriptor == null || field notIn resultingDescriptor) {
                     val generatedArgs = generateArgs(args, generationDepth + 1) ?: continue
-                    calls += StaticMethodCall(kfgField.setter, generatedArgs)
+                    calls += StaticMethodCall(setters.setter(kfgField), generatedArgs)
                     accept(resultingDescriptor ?: ClassDescriptor(klass))
                     reduce()
                     log.info("Used setter for field $field, new desc: $this")

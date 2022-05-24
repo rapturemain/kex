@@ -13,9 +13,13 @@ import org.vorpal.research.kfg.ir.value.ValueFactory
 import org.vorpal.research.kfg.ir.value.instruction.*
 import org.vorpal.research.kfg.type.TypeFactory
 import org.vorpal.research.kfg.visitor.MethodVisitor
+import org.vorpal.research.kfg.visitor.Pipeline
 import org.vorpal.research.kthelper.collection.buildList
 
-class RuntimeTraceCollector(override val cm: ClassManager) : MethodVisitor, InstructionBuilder {
+class RuntimeTraceCollector(
+    override val cm: ClassManager,
+    override val pipeline: Pipeline
+) : MethodVisitor, InstructionBuilder {
     override val ctx: UsageContext = EmptyUsageContext
     private val collectorClass = cm[TraceCollector::class.java.canonicalName.replace('.', '/')]
     private lateinit var traceCollector: Instruction

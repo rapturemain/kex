@@ -11,11 +11,13 @@ import org.vorpal.research.kex.util.getRuntime
 import org.vorpal.research.kfg.ClassManager
 import org.vorpal.research.kfg.KfgConfig
 import org.vorpal.research.kfg.Package
-import org.vorpal.research.kfg.analysis.LoopSimplifier
 import org.vorpal.research.kfg.container.Container
 import org.vorpal.research.kfg.container.asContainer
 import org.vorpal.research.kfg.ir.Method
 import org.vorpal.research.kfg.util.Flags
+import org.vorpal.research.kfg.visitor.executePipeline
+import org.vorpal.research.kfg.visitor.pipelineStub
+import org.vorpal.research.kfg.visitor.schedule
 import java.nio.file.Paths
 
 abstract class KexTest {
@@ -43,11 +45,12 @@ abstract class KexTest {
 
     protected fun getPSA(method: Method): PredicateStateAnalysis {
         if (method.hasLoops) {
-            LoopSimplifier(cm).visit(method)
-            LoopDeroller(cm).visit(method)
+            executePipeline(cm, listOf(method)) {
+                schedule<LoopDeroller>()
+            }
         }
 
-        val psa = PredicateStateAnalysis(cm)
+        val psa = PredicateStateAnalysis(cm, pipelineStub())
         psa.visit(method)
         return psa
     }

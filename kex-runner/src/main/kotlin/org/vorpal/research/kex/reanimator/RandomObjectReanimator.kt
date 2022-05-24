@@ -12,6 +12,7 @@ import org.vorpal.research.kex.reanimator.actionsequence.ActionSequence
 import org.vorpal.research.kex.reanimator.actionsequence.ActionSequenceExecutor
 import org.vorpal.research.kex.reanimator.actionsequence.generator.ActionSequenceGenerator
 import org.vorpal.research.kex.reanimator.actionsequence.generator.GeneratorContext
+import org.vorpal.research.kex.reanimator.collector.SetterAnalysisResult
 import org.vorpal.research.kex.util.kex
 import org.vorpal.research.kex.util.loadClass
 import org.vorpal.research.kfg.ClassManager
@@ -28,11 +29,12 @@ class RandomObjectReanimator(
     val ctx: ExecutionContext,
     val target: Package,
     val psa: PredicateStateAnalysis,
+    val setters: SetterAnalysisResult,
     val visibilityLevel: Visibility
 ) {
     val random: Randomizer get() = ctx.random
     val cm: ClassManager get() = ctx.cm
-    val generatorContext = GeneratorContext(ctx, psa, visibilityLevel)
+    val generatorContext = GeneratorContext(ctx, psa, setters, visibilityLevel)
 
     private val ClassManager.randomClass
         get() = this.concreteClasses
